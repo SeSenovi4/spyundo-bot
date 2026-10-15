@@ -2,7 +2,6 @@
 import os
 import asyncio
 import sqlite3
-from datetime import datetime, timezone
 
 import aiohttp
 from telethon import TelegramClient, events
@@ -14,8 +13,10 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 SESSION_STRING = os.environ["SESSION_STRING"]
 NOTIFY_CHAT_ID = os.environ["NOTIFY_CHAT_ID"]
 
-os.makedirs("/data", exist_ok=True)
-db = sqlite3.connect("/data/messages.db")
+DATA_DIR = os.environ.get("DATA_DIR", "/tmp/spyundo")
+os.makedirs(DATA_DIR, exist_ok=True)
+
+db = sqlite3.connect(os.path.join(DATA_DIR, "messages.db"))
 db.execute("""
 CREATE TABLE IF NOT EXISTS messages (
     chat_id INTEGER,
@@ -99,14 +100,13 @@ async def on_new_message(event):
 
     chat_name = await get_chat_name(event)
     sender = await get_sender_name(event)
-    text = event.raw_text or "[Медиа или сообщение без текста]"
 
     save_message(
         event.chat_id,
         event.id,
         chat_name,
         sender,
-        text
+        event.raw_text or "[Медиа или сообщение без текста]"
     )
 
 
@@ -195,22 +195,23 @@ async def main():
 
     http = aiohttp.ClientSession()
 
-    await client.connect()
-
-    if not await client.is_user_authorized():
-        raise RuntimeError(
-            "Telegram-сессия недействительна. "
-            "Нужно заново создать SESSION_STRING."
-        )
-
-    me = await client.get_me()
-    print(f"SpyUndo запущен. Аккаунт: {me.id}")
-
-    await notify("✅ SpyUndo запущен и подключён к Telegram.")
-
     try:
+        await client.connect()
+
+        if not await client.is_user_authorized():
+            raise RuntimeError(
+                "Telegram-сессия недействительна. "
+                "Нужно заново создать SESSION_STRING."
+            )
+
+        me = await client.get_me()
+        print(f"SpyUndo запущен. Аккаунт: {me.id}")
+
+        await notify("✅ SpyUndo запущен и подключён к Telegram.")
         await client.run_until_disconnected()
+
     finally:
+        await client.disconnect()
         await http.close()
         db.close()
 
